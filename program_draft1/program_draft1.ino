@@ -2,8 +2,8 @@
 
 //Declare motors
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
-Adafruit_DCMotor *MotorL = AFMS.getMotor(3);
-Adafruit_DCMotor *MotorR = AFMS.getMotor(4);
+Adafruit_DCMotor *MotorL = AFMS.getMotor(1);
+Adafruit_DCMotor *MotorR = AFMS.getMotor(2);
 
 //Declare line sensors and set readings to default
 int leftLineSensorPin = 2;
@@ -30,13 +30,14 @@ bool get_ready_to_stop_turning = false;
 bool dropoff_mode = false;
 bool turn_detection = true;
 bool override = false;
-bool recycling = true;
+bool recycling = false;
 bool backward_mode = false;
 int main_path_num = -1; //index for the nth direction of main path
 int dropoff_path_num = -1; //index for nth direction of dropoff path
 
 unsigned long startTime = 0;
-int turn_delay = 400;
+unsigned long dropoffTimer = 0;
+int turn_delay = 300;
 int dropoff_time = 1000;
 
 enum Mode {ADVANCE, TURN};
@@ -59,66 +60,66 @@ Turn_dir turn_dir = NOTHING;
 void go_forward() {
   MotorL->setSpeed(MOTOR_SPEED);
   MotorR->setSpeed(MOTOR_SPEED);
-  MotorL->run(FORWARD);
-  MotorR->run(FORWARD);
+  MotorL->run(BACKWARD);
+  MotorR->run(BACKWARD);
 }
 
 void go_backward() {
   MotorL->setSpeed(MOTOR_SPEED);
   MotorR->setSpeed(MOTOR_SPEED);
-  MotorL->run(BACKWARD);
-  MotorR->run(BACKWARD);
+  MotorL->run(FORWARD);
+  MotorR->run(FORWARD);
 }
 
 void slight_forward_right() {
   MotorL->setSpeed(MOTOR_SPEED);
   MotorR->setSpeed(SLOW_SPEED);
-  MotorL->run(FORWARD);
-  MotorR->run(FORWARD);
+  MotorL->run(BACKWARD);
+  MotorR->run(BACKWARD);
 }
 
 void slight_forward_left() {
   MotorL->setSpeed(SLOW_SPEED);
   MotorR->setSpeed(MOTOR_SPEED);
-  MotorL->run(FORWARD);
-  MotorR->run(FORWARD);
+  MotorL->run(BACKWARD);
+  MotorR->run(BACKWARD);
 }
 
 void slight_backward_right() {
   MotorL->setSpeed(MOTOR_SPEED);
   MotorR->setSpeed(SLOW_SPEED);
-  MotorL->run(BACKWARD);
-  MotorR->run(BACKWARD);
+  MotorL->run(FORWARD);
+  MotorR->run(FORWARD);
 }
 
 void slight_backward_left() {
   MotorL->setSpeed(SLOW_SPEED);
   MotorR->setSpeed(MOTOR_SPEED);
-  MotorL->run(BACKWARD);
-  MotorR->run(BACKWARD);
+  MotorL->run(FORWARD);
+  MotorR->run(FORWARD);
 }
 
 void forward_right() {
   MotorL->setSpeed(MOTOR_SPEED);
-  MotorL->run(FORWARD);
+  MotorL->run(BACKWARD);
   MotorR->run(RELEASE);
 }
 
 void forward_left() {
   MotorR->setSpeed(MOTOR_SPEED);
   MotorL->run(RELEASE);
-  MotorR->run(FORWARD);
+  MotorR->run(BACKWARD);
 }
 
 void backward_left() {
   MotorR->setSpeed(MOTOR_SPEED);
   MotorL->run(RELEASE);
-  MotorR->run(BACKWARD);
+  MotorR->run(FORWARD);
 }
 
 void backward_right() {
   MotorL->setSpeed(MOTOR_SPEED);
-  MotorL->run(BACKWARD);
+  MotorL->run(FORWARD);
   MotorR->run(RELEASE);
 }
 
@@ -131,7 +132,7 @@ void navigate_junction(Direction direction) {
   Serial.println(direction);
   switch (direction) {
     case STRAIGHT:
-      delay(1000);
+      startTime = millis();
       currentMode = ADVANCE;
       break;
     case LEFT:
@@ -146,7 +147,7 @@ void navigate_junction(Direction direction) {
       break;
     case BACKTRACK:
       backward_mode = true;
-      startTime = millis();
+      dropoffTimer = millis();
       break;
     case DROPOFFL:
       dropoff_path_num = -1;
@@ -155,27 +156,31 @@ void navigate_junction(Direction direction) {
         dropoff_path[0] = RIGHT;
         dropoff_path[1] = RIGHT;
         dropoff_path[2] = BACKTRACK;
-        dropoff_path[3] = LEFT;
+        dropoff_path[3] = RIGHT;
       } else {
         dropoff_path[0] = STRAIGHT;
         dropoff_path[1] = RIGHT;
         dropoff_path[2] = BACKTRACK;
         dropoff_path[3] = LEFT;
+        dropoff_path[4] = LEFT;
+        dropoff_path[5] = STRAIGHT;
       }
       break;
     case DROPOFFR:
       dropoff_path_num = -1;
       dropoff_mode = true;
       if (recycling) {
-        dropoff_path[0] = LEFT;
-        dropoff_path[1] = RIGHT;
-        dropoff_path[2] = BACKTRACK;
-        dropoff_path[3] = LEFT;
+        dropoff_path[0] = STRAIGHT;
+        dropoff_path[1] = LEFT;
+        dropoff_path[2] = RIGHT;
+        dropoff_path[3] = BACKTRACK;
+        dropoff_path[4] = RIGHT;
       } else {
         dropoff_path[0] = RIGHT;
-        dropoff_path[1] = RIGHT;
-        dropoff_path[2] = BACKTRACK;
+        dropoff_path[1] = BACKTRACK;
+        dropoff_path[2] = LEFT;
         dropoff_path[3] = LEFT;
+        dropoff_path[4] = STRAIGHT;
       }
       break;
   }
@@ -210,8 +215,8 @@ void follow_line() {
     //Perform a slight right correction depending on mode
 
     if (backward_mode) {
-      slight_backward_right();
-
+      // slight_backward_right();
+      ;
     } else {
       slight_forward_right();
 
@@ -221,7 +226,8 @@ void follow_line() {
     //Perfom a slight left correction
 
     if (backward_mode) {
-      slight_backward_left();
+      // slight_backward_left();
+      ;
 
     } else {
       slight_forward_left();
@@ -254,7 +260,7 @@ void setup() {
 
   Serial.println("Running this program");
   Serial.println("Motor Shield found.");
-  delay(2000);
+  delay(2000); //Wait 2 seconds at start
 }
 
 void loop() {
@@ -268,17 +274,22 @@ void loop() {
     }
   }
 
-  // if ((millis() - dropoffTime) < dropoff_time) {
-  //   Serial.println("HERE");
-  //   follow_line();
-  //   return;
-  // }
+  if ((millis() - dropoffTimer) < dropoff_time) {
+    Serial.println("HERE");
+    follow_line();
+    return;
+  }
+  
+  if ((millis() - startTime) < turn_delay) {
+    follow_line();
+    return; //skip current iteration
+  }
 
   switch (currentMode) {
     case ADVANCE:
 
       //Detect a junction/turn or override sensor information
-      if ((R == 1 || L == 1 || override) && (turn_detection)) {
+      if (R == 1 || L == 1 || override) {
 
         Serial.println("JUNCTION DETECTED");
 
@@ -307,39 +318,57 @@ void loop() {
 
     case TURN:
 
-      if ((millis() - startTime) < turn_delay) {
-        follow_line();
-        return; //skip current iteration
-      }
-
       switch (turn_dir) {
         case TURNING_LEFT:
 
-          if (L == 1) {
-            get_ready_to_stop_turning = true;
-          }
-
           if (backward_mode) {
             backward_left();
-          } else {
-            forward_left();
-          }
 
-          if (line == "0010" && get_ready_to_stop_turning) {
-            backward_mode = false;
-            currentMode = ADVANCE;
-            get_ready_to_stop_turning = false;
-
-            if (dropoff_path_num == 1) {
-              override = true;
-              startTime = millis();
-              //INSERT CODE
+            if (R == 1) {
+              get_ready_to_stop_turning = true;
             }
 
-            if (backward_mode) {
-              go_backward();
-            } else {
-              go_forward();
+            if (line == "0100" && get_ready_to_stop_turning) {
+              backward_mode = false;
+              currentMode = ADVANCE;
+              get_ready_to_stop_turning = false;
+
+              if (dropoff_path_num == 1) { //next mode is backtracking
+                override = true;
+                dropoffTimer = millis();
+                //INSERT CODE
+              }
+
+              if (backward_mode) {
+                go_backward();
+              } else {
+                go_forward();
+              }
+            }
+          } else {
+            forward_left();
+
+            if (L == 1) {
+              get_ready_to_stop_turning = true;
+            }
+
+
+            if (line == "0010" && get_ready_to_stop_turning) {
+              backward_mode = false;
+              currentMode = ADVANCE;
+              get_ready_to_stop_turning = false;
+
+              if (dropoff_path_num == 1) {
+                override = true;
+                dropoffTimer = millis();
+                //INSERT CODE
+              }
+
+              if (backward_mode) {
+                go_backward();
+              } else {
+                go_forward();
+              }
             }
           }
 
@@ -347,34 +376,59 @@ void loop() {
 
         case TURNING_RIGHT:
 
-          if (R == 1) {
-            get_ready_to_stop_turning = true;
-
-          }
 
           if (backward_mode) {
             backward_right();
+
+            if (L == 1) {
+              get_ready_to_stop_turning = true;
+            }
+
+
+            if (line == "0010" && get_ready_to_stop_turning) {
+              backward_mode = false;
+              currentMode = ADVANCE;
+              get_ready_to_stop_turning = false;
+
+              if (dropoff_path_num == 1) {
+                override = true;
+                dropoffTimer = millis();
+                //INSERT CODE
+              }
+
+              if (backward_mode) {
+                go_backward();
+              } else {
+                go_forward();
+              }
+            }
           } else {
             forward_right();
-          }
 
-          if (line == "0100" && get_ready_to_stop_turning) {
-            backward_mode = false;
-            currentMode = ADVANCE;
-            get_ready_to_stop_turning = false;
-
-            if (dropoff_path_num == 1) { //next mode is backtracking
-              override = true;
-              startTime = millis();
-              //INSERT CODE
+            if (R == 1) {
+              get_ready_to_stop_turning = true;
             }
 
-            if (backward_mode) {
-              go_backward();
-            } else {
-              go_forward();
+            if (line == "0100" && get_ready_to_stop_turning) {
+              backward_mode = false;
+              currentMode = ADVANCE;
+              get_ready_to_stop_turning = false;
+
+              if (dropoff_path_num == 1) { //next mode is backtracking
+                override = true;
+                dropoffTimer = millis();
+                //INSERT CODE
+              }
+
+              if (backward_mode) {
+                go_backward();
+              } else {
+                go_forward();
+              }
             }
           }
+
+
           break;
       }
 
