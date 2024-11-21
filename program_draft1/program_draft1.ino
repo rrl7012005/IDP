@@ -34,6 +34,7 @@ bool recycling = false;
 bool backward_mode = false;
 int main_path_num = -1; //index for the nth direction of main path
 int dropoff_path_num = -1; //index for nth direction of dropoff path
+int dropoff_index = 0;
 
 unsigned long startTime = 0;
 unsigned long dropoffTimer = 0;
@@ -41,20 +42,21 @@ int turn_delay = 300;
 int dropoff_time = 1000;
 
 enum Mode {ADVANCE, TURN};
-enum Turn_dir {TURNING_LEFT, TURNING_RIGHT, NOTHING};
-enum Direction {STRAIGHT, LEFT, RIGHT, DROPOFFL, DROPOFFR, BACKTRACK};
+enum Turn_dir {TURNING_LEFT, TURNING_RIGHT, NOTURN};
+enum Direction {STRAIGHT, LEFT, RIGHT, DROPOFFL, DROPOFFR, BACKTRACK, NOTHING};
 
 //Declare path arrays
 
-Direction main_path[] = {STRAIGHT, LEFT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, RIGHT, RIGHT, RIGHT, DROPOFFL, LEFT, LEFT, LEFT, STRAIGHT, DROPOFFR, LEFT, RIGHT, RIGHT, STRAIGHT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, LEFT, RIGHT, RIGHT, LEFT, STRAIGHT};
-Direction dropoff_path[] = {RIGHT, RIGHT, BACKTRACK, LEFT};
+Direction main_path[] = {STRAIGHT, LEFT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, RIGHT, RIGHT, RIGHT, DROPOFFL, LEFT, LEFT, LEFT, DROPOFFR, LEFT, RIGHT, RIGHT, STRAIGHT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, LEFT, RIGHT, RIGHT, LEFT, STRAIGHT};
+Direction dropoff_path[] = {RIGHT, RIGHT, BACKTRACK, LEFT, NOTHING, NOTHING};
+int dropoffpathlength = 0;
 
 //Note: boxes are on paths where main_path_num = 0, 5, 10, 17
 //once path_num=27 (the end) we stop the robot after a bit
 
 //Set default modes
 Mode currentMode = ADVANCE;
-Turn_dir turn_dir = NOTHING;
+Turn_dir turn_dir = NOTURN;
 
 
 void go_forward() {
@@ -128,8 +130,17 @@ void stop_motors() {
   MotorR->run(RELEASE);
 }
 
+void switch_recycling() {
+  if (recycling) {
+    recycling = false;
+  } else {
+    recycling = true;
+  }
+}
+
 void navigate_junction(Direction direction) {
   Serial.println(direction);
+  dropoff_time = 1000;
   switch (direction) {
     case STRAIGHT:
       startTime = millis();
@@ -148,16 +159,24 @@ void navigate_junction(Direction direction) {
     case BACKTRACK:
       backward_mode = true;
       dropoffTimer = millis();
+      dropoff_time = 650;
       break;
     case DROPOFFL:
       dropoff_path_num = -1;
       dropoff_mode = true;
+      switch_recycling();
       if (recycling) {
+        dropoff_index = 1;
+        dropoffpathlength = 3;
         dropoff_path[0] = RIGHT;
         dropoff_path[1] = RIGHT;
         dropoff_path[2] = BACKTRACK;
         dropoff_path[3] = RIGHT;
+        dropoff_path[4] = NOTHING;
+        dropoff_path[5] = NOTHING;
       } else {
+        dropoff_index = 1;
+        dropoffpathlength = 5;
         dropoff_path[0] = STRAIGHT;
         dropoff_path[1] = RIGHT;
         dropoff_path[2] = BACKTRACK;
@@ -167,20 +186,27 @@ void navigate_junction(Direction direction) {
       }
       break;
     case DROPOFFR:
+      switch_recycling();
       dropoff_path_num = -1;
       dropoff_mode = true;
       if (recycling) {
+        dropoff_index = 2;
+        dropoffpathlength = 4;
         dropoff_path[0] = STRAIGHT;
         dropoff_path[1] = LEFT;
         dropoff_path[2] = RIGHT;
         dropoff_path[3] = BACKTRACK;
         dropoff_path[4] = RIGHT;
+        dropoff_path[5] = NOTHING;
       } else {
-        dropoff_path[0] = RIGHT;
+        dropoff_index = 0;
+        dropoffpathlength = 4;
+        dropoff_path[0] = LEFT;
         dropoff_path[1] = BACKTRACK;
         dropoff_path[2] = LEFT;
         dropoff_path[3] = LEFT;
         dropoff_path[4] = STRAIGHT;
+        dropoff_path[5] = NOTHING;
       }
       break;
   }
@@ -298,11 +324,16 @@ void loop() {
           dropoff_path_num += 1;
           navigate_junction(dropoff_path[dropoff_path_num]);
 
-          if (dropoff_path_num == 3) {
+          if (dropoff_path_num == dropoffpathlength) {
             //reached end of dropping off
             override = false;
             dropoff_mode = false;
           }
+
+          if (dropoff_path_num == dropoff_index + 2 ) {
+            override = false;
+          }
+
         } else {
           //Navigate normal path, not ready to dropoff yet
           main_path_num += 1;
@@ -333,7 +364,7 @@ void loop() {
               currentMode = ADVANCE;
               get_ready_to_stop_turning = false;
 
-              if (dropoff_path_num == 1) { //next mode is backtracking
+              if (dropoff_path_num == dropoff_index) { //next mode is backtracking
                 override = true;
                 dropoffTimer = millis();
                 //INSERT CODE
@@ -358,7 +389,7 @@ void loop() {
               currentMode = ADVANCE;
               get_ready_to_stop_turning = false;
 
-              if (dropoff_path_num == 1) {
+              if (dropoff_path_num == dropoff_index) {
                 override = true;
                 dropoffTimer = millis();
                 //INSERT CODE
@@ -390,7 +421,7 @@ void loop() {
               currentMode = ADVANCE;
               get_ready_to_stop_turning = false;
 
-              if (dropoff_path_num == 1) {
+              if (dropoff_path_num == dropoff_index) {
                 override = true;
                 dropoffTimer = millis();
                 //INSERT CODE
@@ -414,7 +445,7 @@ void loop() {
               currentMode = ADVANCE;
               get_ready_to_stop_turning = false;
 
-              if (dropoff_path_num == 1) { //next mode is backtracking
+              if (dropoff_path_num == dropoff_index) { //next mode is backtracking
                 override = true;
                 dropoffTimer = millis();
                 //INSERT CODE
