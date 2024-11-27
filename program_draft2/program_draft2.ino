@@ -4,6 +4,8 @@
 #include "Wire.h"
 #include "DFRobot_VL53L0X.h"
 
+DFRobot_VL53L0X sensor;
+
 
 //TODO LIST
 /*1. 180 U-turn at the end
@@ -24,7 +26,7 @@ Adafruit_DCMotor *MotorL = AFMS.getMotor(1);
 Adafruit_DCMotor *MotorR = AFMS.getMotor(2);
 Servo myservo;
 int servoPin = 10;
-int open = 30;    // variable to store the servo position
+int open = 50;    // variable to store the servo position
 int closed = 90;
 
 //Declare line sensors and set readings to default
@@ -41,10 +43,10 @@ int CR = 0;
 String line = "";
 
 //Declare magnetic sensors
-int magnetPin = 6;
+int magnetPin = 11;
 int distance = 0;
 int magnetVal = 0;
-int threshold;
+int threshold = 120;
 
 //Declare LEDs and buttons
 int blueLED = 7;
@@ -60,7 +62,6 @@ int SLOW_SPEED = 191;
 //Declare state variables
 bool get_ready_to_stop_turning = false;
 bool dropoff_mode = false;
-bool turn_detection = true;
 bool override = false;
 bool recycling = false;
 bool backward_mode = false;
@@ -74,10 +75,8 @@ unsigned long dropoffTimer = 0;
 unsigned long ledTimer = 0;
 int turn_delay = 200;
 int dropoff_time = 800;
-int dropoff_reversal_time = 250;
-int dropoff_backup_time = 250;
 int blue_led_period = 500;
-int pickup_time = 250;
+int pickup_time = 300;
 
 //Define possible modes
 
@@ -90,6 +89,9 @@ enum Direction {STRAIGHT, LEFT, RIGHT, DROPOFFL, DROPOFFR, BACKTRACK, NOTHING};
 Direction main_path[] = {STRAIGHT, LEFT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, RIGHT, RIGHT, RIGHT, DROPOFFL, LEFT, LEFT, LEFT, DROPOFFR, LEFT, RIGHT, RIGHT, STRAIGHT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, LEFT, RIGHT, RIGHT, LEFT, STRAIGHT};
 Direction dropoff_path[] = {RIGHT, RIGHT, BACKTRACK, LEFT, NOTHING, NOTHING}; //pad array with nothings as dropoff paths have variable lengths
 int paths_with_box[] = {0, 5, 10, 16};
+int paths_with_box_size = 4;
+int tof_distances[10] = {2047, 2047, 2047, 2047, 2047, 2047, 2047, 2047, 2047, 2047};
+const int size = 10;
 int dropoffpathlength = 0;
 
 //Note: boxes are on paths where main_path_num = 0, 5, 10, 17
@@ -171,8 +173,8 @@ void stop_motors() {
   MotorR->run(RELEASE);
 }
 
-bool in_array(int value, int array[]) {
-  for (int i = 0; i <= sizeof(array) / sizeof(array[0]); i++) {
+bool in_array(int value, int array[], int array_size) {
+  for (int i = 0; i < array_size; i++) {
     if (array[i] == value) {
       return true;
     }
@@ -180,9 +182,9 @@ bool in_array(int value, int array[]) {
   return false;
 }
 
-// int measure_distance() {
-//   sensor.getDistance();
-// }
+int measure_distance() {
+  return sensor.getDistance();
+}
 
 void navigate_junction(Direction direction) {
   Serial.println(direction);
@@ -206,13 +208,15 @@ void navigate_junction(Direction direction) {
       dropoff();
       backward_mode = true;
       dropoffTimer = millis();
-      dropoff_time = dropoff_reversal_time;
+      dropoff_time = 800;
       break;
     case DROPOFFL:
-      switch_recycling();
+      
       dropoff_path_num = -1;
       dropoff_mode = true;
       if (recycling) {
+
+        digitalWrite(redLED, HIGH);
         dropoff_index = 1;
         dropoffpathlength = 3;
         dropoff_path[0] = RIGHT;
@@ -221,7 +225,10 @@ void navigate_junction(Direction direction) {
         dropoff_path[3] = RIGHT;
         dropoff_path[4] = NOTHING;
         dropoff_path[5] = NOTHING;
+
       } else {
+
+        digitalWrite(greenLED, HIGH);
         dropoff_index = 1;
         dropoffpathlength = 5;
         dropoff_path[0] = STRAIGHT;
@@ -233,10 +240,12 @@ void navigate_junction(Direction direction) {
       }
       break;
     case DROPOFFR:
-      switch_recycling();
+
       dropoff_path_num = -1;
       dropoff_mode = true;
       if (recycling) {
+
+        digitalWrite(redLED, HIGH);
         dropoff_index = 2;
         dropoffpathlength = 4;
         dropoff_path[0] = STRAIGHT;
@@ -246,6 +255,8 @@ void navigate_junction(Direction direction) {
         dropoff_path[4] = RIGHT;
         dropoff_path[5] = NOTHING;
       } else {
+
+        digitalWrite(greenLED, HIGH);
         dropoff_index = 0;
         dropoffpathlength = 4;
         dropoff_path[0] = LEFT;
@@ -268,7 +279,7 @@ void read_line_sensor() {
 
   line = String(L) + String(CL) + String(CR) + String(R);
 
-  Serial.println(line);
+  // Serial.println(line);
 
 }
 
@@ -331,6 +342,10 @@ void pickup() {
   }
 
   delay(100);
+
+  for (int i = 0; i < size; i++) {
+    tof_distances[i] = 2047;
+  }
 }
 
 void dropoff() {
@@ -340,42 +355,53 @@ void dropoff() {
   for (int pos = closed; pos >= open; pos--) {
     myservo.write(pos);
     delay(10);
-  }
+  } 
 
-  go_backward();
-  delay(dropoff_backup_time);
-  stop_motors();
-
-  for (int pos = open; pos <= closed; pos++) {
-    myservo.write(pos);
-    delay(10);
-  }
+  digitalWrite(redLED, LOW);
+  digitalWrite(greenLED, LOW);
+  recycling = false;
+  magnetVal = 0;
 }
 
 bool is_there_box() {
+  int counter = 0;
 
-  int buttonState = digitalRead(buttonPin);
+  for (int i = 0; i < size; i++) {
+    if (tof_distances[i] <= threshold) {
+      counter += 1;
+    }
+  }
 
-  if (buttonState == HIGH) {
+  if (counter >= 7) {
     return true;
   } else {
     return false;
   }
+  
+}
 
-  // distance = measure_distance();
-  // if (box_on == false) {
-  //   if (distance <= threshold) {
-  //     return true;
-  //   } else {
-  //     return false;
-  //   }
-  // }
+void update_distances() {
+
+  distance = measure_distance();
+
+  for (int i = 0; i < size - 1; i++) {
+    tof_distances[i] = tof_distances[i + 1];
+  }
+
+  tof_distances[size - 1] = distance;
 }
 
 void switch_recycling() {
   if (recycling) {
     recycling = false;
   } else {
+    recycling = true;
+  }
+}
+
+void detect_magnetic() {
+  magnetVal = digitalRead(magnetPin);
+  if (magnetVal == 1) {
     recycling = true;
   }
 }
@@ -391,14 +417,22 @@ void setup() {
     while (1);
   }
 
+  while (true) {
+    int buttonState = digitalRead(buttonPin);
+
+    if (buttonState == HIGH) {
+      break;
+    }
+  }
+
   Serial.println("Running this program");
   Serial.println("Motor Shield found.");
   delay(2000); //Wait 2 seconds at start
 
-  // Wire.begin();
-  // sensor.begin(0x50);
-  // sensor.setMode(sensor.eContinuous, sensor.eHigh);
-  // sensor.start();
+  Wire.begin();
+  sensor.begin(0x50);
+  sensor.setMode(sensor.eContinuous, sensor.eHigh);
+  sensor.start();
 
   ledTimer = millis();
 }
@@ -406,24 +440,23 @@ void setup() {
 void loop() {
   read_line_sensor();
 
+  Serial.print("DISTANCE: ");
+  Serial.print(distance);
+  Serial.print(" PAth_NUM: ");
+  Serial.println(main_path_num);
+  Serial.print(" LINE SENSOR: ");
+  Serial.println(line);
+
+  if (box_on) {
+    detect_magnetic();
+  }
+
   if ((millis() - ledTimer) > blue_led_period) {
     digitalWrite(blueLED, HIGH);
     delay(10);
     ledTimer = millis();
   } else {
     digitalWrite(blueLED, LOW);
-  }
-
-  if (in_array(main_path_num, paths_with_box)) {
-    digitalWrite(redLED, HIGH);
-    if (is_there_box()) {
-      pickup();
-      digitalWrite(greenLED, HIGH);
-    } else {
-      digitalWrite(greenLED, LOW);
-    }
-  } else {
-    digitalWrite(redLED, LOW);
   }
 
   if ((millis() - dropoffTimer) < dropoff_time) {
@@ -435,6 +468,16 @@ void loop() {
   if ((millis() - startTime) < turn_delay) {
     follow_line();
     return; //skip current iteration
+  }
+
+  if ((box_on == false) && (dropoff_mode == false) && (currentMode == ADVANCE)) {
+    if (in_array(main_path_num, paths_with_box, paths_with_box_size)) {
+      Serial.println("HERE");
+      update_distances();
+      if (is_there_box()) {
+        pickup();
+      }
+    }
   }
 
   switch (currentMode) {
@@ -458,6 +501,13 @@ void loop() {
 
           if (dropoff_path_num == dropoff_index + 2 ) {
             override = false;
+
+            stop_motors();
+
+            for (int pos = open; pos <= closed; pos++) {
+              myservo.write(pos);
+              delay(10);
+            }
           }
 
         } else {
@@ -510,7 +560,7 @@ void loop() {
             }
 
 
-            if (line == "0010" && get_ready_to_stop_turning) {
+            if (line == "0100" && get_ready_to_stop_turning) {
               backward_mode = false;
               currentMode = ADVANCE;
               get_ready_to_stop_turning = false;
@@ -566,7 +616,7 @@ void loop() {
               get_ready_to_stop_turning = true;
             }
 
-            if (line == "0100" && get_ready_to_stop_turning) {
+            if (line == "0010" && get_ready_to_stop_turning) {
               backward_mode = false;
               currentMode = ADVANCE;
               get_ready_to_stop_turning = false;
