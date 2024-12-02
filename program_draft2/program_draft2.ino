@@ -8,12 +8,7 @@ DFRobot_VL53L0X sensor;
 
 
 //TODO LIST
-/*1. 180 U-turn at the end
-2. Test turning and path with the arm
-3. Write and test pickup and dropping mechanisms with arm 
-4. Magnet sensor and LED lighting test and box detection
-5. Drop box in recycling center
-6. Button to start stop reset, switch modes
+/*
 6. Off-path algorithm (in between 3rd and 4th and after all)
 7. Integrating everything together (build cover for line sensor)
 8. Robustify the code, so not prone to noise changes, random sensor detections
@@ -28,6 +23,8 @@ Servo myservo;
 int servoPin = 10;
 int open = 50;    // variable to store the servo position
 int closed = 90;
+int servo_close_delay = 3;
+int servo_open_delay = 15;
 
 //Declare line sensors and set readings to default
 int leftLineSensorPin = 2;
@@ -46,7 +43,7 @@ String line = "";
 int magnetPin = 11;
 int distance = 0;
 int magnetVal = 0;
-int threshold = 120;
+int threshold = 100;
 
 //Declare LEDs and buttons
 int blueLED = 7;
@@ -73,20 +70,20 @@ int dropoff_index = 0; //index of which the next index corresponds to backtracki
 unsigned long startTime = 0;
 unsigned long dropoffTimer = 0;
 unsigned long ledTimer = 0;
-int turn_delay = 200;
+int turn_delay = 170;
 int dropoff_time = 800;
 int blue_led_period = 500;
-int pickup_time = 300;
+int pickup_time = 400;
 
 //Define possible modes
 
 enum Mode {ADVANCE, TURN};
 enum Turn_dir {TURNING_LEFT, TURNING_RIGHT, NOTURN};
-enum Direction {STRAIGHT, LEFT, RIGHT, DROPOFFL, DROPOFFR, BACKTRACK, NOTHING};
+enum Direction {STRAIGHT, LEFT, RIGHT, DROPOFFL, DROPOFFR, BACKTRACK, FULL180, NOTHING};
 
 //Declare path arrays
 
-Direction main_path[] = {STRAIGHT, LEFT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, RIGHT, RIGHT, RIGHT, DROPOFFL, LEFT, LEFT, LEFT, DROPOFFR, LEFT, RIGHT, RIGHT, STRAIGHT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, LEFT, RIGHT, RIGHT, LEFT, STRAIGHT};
+Direction main_path[] = {STRAIGHT, LEFT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, RIGHT, RIGHT, RIGHT, DROPOFFL, LEFT, LEFT, LEFT, DROPOFFR, LEFT, RIGHT, RIGHT, STRAIGHT, RIGHT, STRAIGHT, RIGHT, DROPOFFL, LEFT, RIGHT, RIGHT, LEFT, FULL180};
 Direction dropoff_path[] = {RIGHT, RIGHT, BACKTRACK, LEFT, NOTHING, NOTHING}; //pad array with nothings as dropoff paths have variable lengths
 int paths_with_box[] = {0, 5, 10, 16};
 int paths_with_box_size = 4;
@@ -210,6 +207,23 @@ void navigate_junction(Direction direction) {
       dropoffTimer = millis();
       dropoff_time = 800;
       break;
+
+    case FULL180:
+      delay(2000);
+      MotorL->run(FORWARD);
+      MotorR->run(BACKWARD);
+      delay(1800);
+      MotorL->run(FORWARD);
+      MotorR->run(FORWARD);
+      delay(1000);
+      MotorL->run(RELEASE);
+      MotorR->run(RELEASE);
+      
+      while (true) {
+        ;
+      }
+      break;
+
     case DROPOFFL:
       
       dropoff_path_num = -1;
@@ -329,7 +343,7 @@ void pickup() {
 
   for (int pos = closed; pos >= open; pos--) {
     myservo.write(pos);
-    delay(10);
+    delay(servo_open_delay);
   }
   
   go_forward();
@@ -338,7 +352,7 @@ void pickup() {
 
   for (int pos = open; pos <= closed; pos++) {
     myservo.write(pos);
-    delay(10);
+    delay(servo_close_delay);
   }
 
   delay(100);
@@ -354,7 +368,7 @@ void dropoff() {
   
   for (int pos = closed; pos >= open; pos--) {
     myservo.write(pos);
-    delay(10);
+    delay(servo_open_delay);
   } 
 
   digitalWrite(redLED, LOW);
@@ -506,7 +520,7 @@ void loop() {
 
             for (int pos = open; pos <= closed; pos++) {
               myservo.write(pos);
-              delay(10);
+              delay(servo_close_delay);
             }
           }
 
